@@ -1,0 +1,13 @@
+{
+  "dependencies": [
+    "cpptrace",
+    "glfw3",
+    "imgui",
+    "libjpeg-turbo",
+    "libwebp",
+    "openexr",
+    "spdlog",
+    "tinyfiledialogs",
+    "assimp"
+  ]
+}
