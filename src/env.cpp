@@ -8,6 +8,9 @@
 #include <Magnum/Shaders/GenericGL.h>
 
 #include <array>
+#include <filesystem>
+
+#include "image.hpp"
 
 static constexpr auto COORDS = std::to_array({
 	Magnum::Vector3{-1.0f, 3.0f, 0.9999f},
@@ -15,87 +18,180 @@ static constexpr auto COORDS = std::to_array({
 	Magnum::Vector3{3.0f, -1.0f, 0.9999f},
 });
 
-EnvMap::EnvMap(const std::filesystem::path& path)
+EnvMap::EnvMap()
 	: _shader("./shaders/background.vert", "./shaders/background.frag") {
 	_mesh.setCount(COORDS.size())
 		.addVertexBuffer(
 			Magnum::GL::Buffer{COORDS}, 0,
 			Magnum::Shaders::GenericGL3D::Position{});
 
+	constexpr auto LUT_RESOLUTION = 1024;
+	constexpr auto SAMPLE_COUNT = 512;
+	constexpr auto FMT = Magnum::PixelFormat::RGBA16F;
+
+	cache(
+		ggxLutTexture,
+		std::filesystem::temp_directory_path() / "ggxLutTexture.bin", [&]() {
+			ggxLutTexture = {LUT_RESOLUTION, FMT};
+			ggxLutTexture.setStorage();
+			generateImg2D(
+				ggxLutTexture, 1, "./shaders/ibl_filtering.frag",
+				[&](CustomShader& shader, int) {
+					shader.setUniformT("u_roughness", 0.0f);
+					shader.setUniformT("u_sampleCount", SAMPLE_COUNT);
+					shader.setUniformT("u_width", 0);
+					shader.setUniformT("u_lodBias", 0.0f);
+					shader.setUniformT("u_distribution", 1);
+					shader.setUniformT("u_isGeneratingLUT", 1);
+				});
+		});
+
+	ggxLutTexture.texture.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
+		.setMinificationFilter(Magnum::SamplerFilter::Linear)
+		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
+
+	cache(
+		charlieLutTexture,
+		std::filesystem::temp_directory_path() / "charlieLutTexture.bin",
+		[&]() {
+			charlieLutTexture = {LUT_RESOLUTION, FMT};
+			charlieLutTexture.setStorage();
+			generateImg2D(
+				charlieLutTexture, 1, "./shaders/ibl_filtering.frag",
+				[&](CustomShader& shader, int) {
+					shader.setUniformT("u_roughness", 0.0f);
+					shader.setUniformT("u_sampleCount", SAMPLE_COUNT);
+					shader.setUniformT("u_width", 0);
+					shader.setUniformT("u_lodBias", 0.0f);
+					shader.setUniformT("u_distribution", 2);
+					shader.setUniformT("u_isGeneratingLUT", 1);
+				});
+		});
+
+	charlieLutTexture.texture
+		.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
+		.setMinificationFilter(Magnum::SamplerFilter::Linear)
+		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
+
+	sheenELut = loadImage("./images/lut_sheen_E.png");
+}
+
+void EnvMap::update(std::filesystem::path path) {
+	path = std::filesystem::canonical(path);
+
 	auto input = loadImage(path);
 
-	_texture.format = Magnum::PixelFormat::RGB16F;
-	_texture.size = Magnum::Vector2i(input.size.min());
-	_texture.texture
-		.setStorage(
-			1, Magnum::GL::textureFormat(_texture.format), _texture.size)
-		.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
+	const auto SIZE = std::min(1024, input.size.min());
+	constexpr auto FMT = Magnum::PixelFormat::RGBA16F;
+
+	auto BASE_PATH = (std::filesystem::temp_directory_path() /
+					  fmt::format("{:X}-", std::filesystem::hash_value(path)))
+						 .string();
+
+	cache(cubemapTexture, BASE_PATH + "cubemapTexture.bin", [&]() {
+		//
+		cubemapTexture = {SIZE, FMT};
+
+		cubemapTexture.setStorage();
+
+		generateCubeMap(
+			cubemapTexture, 1, "./shaders/equirectangular_to_cubemap_copy.frag",
+			[&](CustomShader& shader, int) {
+				shader.setTexture("u_textureData", input, 0);
+			});
+		cubemapTexture.texture.generateMipmap();
+	});
+	cubemapTexture.texture.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
 		.setMinificationFilter(
 			Magnum::SamplerFilter::Linear, Magnum::SamplerMipmap::Linear)
 		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
 
-	generateCubeMap(
-		_texture, 1, "./shaders/equirectangular_to_cubemap_copy.frag",
-		[&](CustomShader& shader, int) {
-			shader.setTexture("u_textureData", input, 0);
-		});
-	_texture.texture.generateMipmap();
+	constexpr auto LAMBERTIAN_SAMPLE_COUNT = 2048;
 
-	_irradiance.format = Magnum::PixelFormat::RGB16F;
-	_irradiance.size = Magnum::Vector2i(32);
-	_irradiance.texture
-		.setStorage(
-			1, Magnum::GL::textureFormat(_irradiance.format), _irradiance.size)
+	cache(lambertianTexture, BASE_PATH + "lambertianTexture.bin", [&]() {
+		lambertianTexture = {SIZE, FMT};
+		lambertianTexture.setStorage();
+
+		generateCubeMap(
+			lambertianTexture, 1, "./shaders/ibl_filtering.frag",
+			[&](CustomShader& shader, int) {
+				shader.setTexture("u_cubemapTexture", cubemapTexture, 0);
+				shader.setUniformT("u_roughness", 0.0f);
+				shader.setUniformT("u_sampleCount", LAMBERTIAN_SAMPLE_COUNT);
+				shader.setUniformT("u_width", SIZE);
+				shader.setUniformT("u_lodBias", 0.0f);
+				shader.setUniformT("u_distribution", 0);
+				shader.setUniformT("u_isGeneratingLUT", 0);
+				shader.setUniformT("u_floatTexture", 1);
+				shader.setUniformT("u_intensityScale", 1.0f);
+			});
+	});
+	lambertianTexture.texture
 		.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
 		.setMinificationFilter(Magnum::SamplerFilter::Linear)
 		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
 
-	generateCubeMap(
-		_irradiance, 1, "./shaders/irradiance_convolution.frag",
-		[&](CustomShader& shader, int) {
-			shader.setTexture("u_textureData", _texture, 0);
-		});
+	const auto MAX_MIP_LEVELS = int(Magnum::Math::log2(SIZE) + 1 - 4);
 
-	constexpr auto maxMipLevels = 5;
-	_prefilter.format = Magnum::PixelFormat::RGB16F;
-	_prefilter.size = Magnum::Vector2i(128);
-	_prefilter.texture
-		.setStorage(
-			maxMipLevels, Magnum::GL::textureFormat(_prefilter.format),
-			_prefilter.size)
-		.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
+	cache(ggxTexture, BASE_PATH + "ggxTexture.bin", [&]() {
+		ggxTexture = {SIZE, FMT, MAX_MIP_LEVELS + 1};
+		ggxTexture.setStorage();
+
+		constexpr auto GGX_SAMPLE_COUNT = 2048;
+		generateCubeMap(
+			ggxTexture, MAX_MIP_LEVELS + 1, "./shaders/ibl_filtering.frag",
+			[&](CustomShader& shader, int mip) {
+				auto roughness = (float)mip / (MAX_MIP_LEVELS - 1);
+				shader.setUniformT("u_distribution", 1);
+				shader.setUniformT("u_roughness", roughness);
+				shader.setTexture("u_cubemapTexture", cubemapTexture, 0);
+				shader.setUniformT("u_sampleCount", GGX_SAMPLE_COUNT);
+				shader.setUniformT("u_width", SIZE);
+				shader.setUniformT("u_lodBias", 0.0f);
+				shader.setUniformT("u_isGeneratingLUT", 0);
+				shader.setUniformT("u_floatTexture", 1);
+				shader.setUniformT("u_intensityScale", 1.0f);
+			});
+	});
+
+	ggxTexture.texture.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
 		.setMinificationFilter(
 			Magnum::SamplerFilter::Linear, Magnum::SamplerMipmap::Linear)
-		.setMagnificationFilter(Magnum::SamplerFilter::Linear)
-		.generateMipmap();
+		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
 
-	generateCubeMap(
-		_prefilter, maxMipLevels, "./shaders/prefilter.frag",
-		[&](CustomShader& shader, int mip) {
-			auto roughness = (float)mip / (maxMipLevels - 1);
-			shader.setTexture("u_textureData", _texture, 0)
-				.setUniformT("u_roughness", roughness);
-		});
+	cache(sheenTexture, BASE_PATH + "sheenTexture.bin", [&]() {
+		sheenTexture = {SIZE, FMT, MAX_MIP_LEVELS + 1};
+		sheenTexture.setStorage();
 
-	_brdfLUT.format = Magnum::PixelFormat::RG16F;
-	_brdfLUT.size = Magnum::Vector2i(512);
-	_brdfLUT.texture
-		.setStorage(
-			maxMipLevels, Magnum::GL::textureFormat(_brdfLUT.format),
-			_brdfLUT.size)
-		.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
-		.setMinificationFilter(Magnum::SamplerFilter::Linear)
-		.setMagnificationFilter(Magnum::SamplerFilter::Linear)
-		.generateMipmap();
-	generateImg2D(
-		_brdfLUT, 1, "./shaders/brdf.frag", [&](CustomShader& shader, int) {});
+		constexpr auto SHEEN_SAMPLE_COUNT = 64;
+		generateCubeMap(
+			sheenTexture, MAX_MIP_LEVELS + 1, "./shaders/ibl_filtering.frag",
+			[&](CustomShader& shader, int mip) {
+				auto roughness = (float)mip / (MAX_MIP_LEVELS - 1);
+				shader.setUniformT("u_distribution", 2);
+				shader.setUniformT("u_roughness", roughness);
+				shader.setTexture("u_cubemapTexture", cubemapTexture, 0);
+				shader.setUniformT("u_sampleCount", SHEEN_SAMPLE_COUNT);
+				shader.setUniformT("u_width", SIZE);
+				shader.setUniformT("u_lodBias", 0.0f);
+				shader.setUniformT("u_isGeneratingLUT", 0);
+				shader.setUniformT("u_floatTexture", 1);
+				shader.setUniformT("u_intensityScale", 1.0f);
+			});
+	});
+
+	sheenTexture.texture.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
+		.setMinificationFilter(
+			Magnum::SamplerFilter::Linear, Magnum::SamplerMipmap::Linear)
+		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
 }
 
 void EnvMap::draw(Magnum::ArcBall& camera) {
 	Magnum::GL::Renderer::setDepthMask(GL_FALSE);
-	_shader.setTexture("u_envCubeMap", _texture, 0)
+	_shader.setTexture("u_envCubeMap", cubemapTexture, 0)
 		.setUniformT(
 			"u_viewProjection", camera.projectionMatrix() * camera.viewMatrix())
+		.setUniformT("u_Exposure", 1.0f)
 		.draw(_mesh);
 	Magnum::GL::Renderer::setDepthMask(GL_TRUE);
 }

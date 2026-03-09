@@ -1,3 +1,7 @@
+#include <Corrade/Containers/StructuredBindings.h>
+#include <Magnum/GL/Framebuffer.h>
+#include <Magnum/GL/Renderbuffer.h>
+#include <Magnum/GL/RenderbufferFormat.h>
 #include <Magnum/MeshTools/Compile.h>
 #include <Magnum/Primitives/UVSphere.h>
 #include <Magnum/Shaders/PhongGL.h>
@@ -19,16 +23,48 @@ std::optional<std::filesystem::path> openFile() {
 
 using namespace Magnum;
 
+constexpr auto FB_SIZE = Vector2i(1024);
+
 struct Main {
 	EnvMap environment;
 	DrawInfo drawInfo;
 
-	Vector4 input = Vector4(0, 0, 0, 1);
+	int view = 0;
+	std::vector<Light> lights;
+
+	Vector4 input = Vector4(90, 0, 270, 1);
 	Matrix4 model;
 
-	std::vector<PbrMetallicRoughness> shaders;
+	GL::Framebuffer opaqueFramebuffer{{{}, FB_SIZE}};
+	GL::Renderbuffer opaqueDepth;
+	Img2D opaque;
 
-	Main() : environment("./images/abandoned_garage_4k.hdr") {}
+	std::map<int, PbrGL> shaders;
+
+	Main() : opaque(FB_SIZE, Magnum::PixelFormat::RGBA8Unorm, 5) {
+		opaque.setStorage()
+			.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
+			.setMinificationFilter(
+				Magnum::SamplerFilter::Linear, Magnum::SamplerMipmap::Linear)
+			.setMagnificationFilter(Magnum::SamplerFilter::Nearest);
+
+		opaqueDepth.setStorage(
+			GL::RenderbufferFormat::DepthComponent24, FB_SIZE);
+
+		opaqueFramebuffer.setViewport({{}, FB_SIZE});
+		opaqueFramebuffer.attachRenderbuffer(
+			GL::Framebuffer::BufferAttachment::Depth, opaqueDepth);
+		opaqueFramebuffer.attachTexture(
+			GL::Framebuffer::ColorAttachment{0}, opaque.texture, 0);
+
+		ASSERT_MESG(
+			opaqueFramebuffer.checkStatus(GL::FramebufferTarget::Draw) ==
+				GL::Framebuffer::Status::Complete,
+			"status = {}",
+			int(opaqueFramebuffer.checkStatus(GL::FramebufferTarget::Draw)));
+
+		environment.update("./images/abandoned_garage_4k.hdr");
+	}
 
 	void updateModel() {
 		model = Matrix4::rotationZ(Math::Deg(input.z())) *
@@ -37,43 +73,19 @@ struct Main {
 				Matrix4::scaling(Vector3(input.w()));
 	}
 
-	void updateShaders() {
-		shaders.clear();
-
-		for (auto& mat : drawInfo.materials) {
-			PbrMetallicRoughness::Flags flags = PbrMetallicRoughness::Flag::IBL;
-
-#define assign(T, F) \
-	if (mat.T != -1) { flags |= PbrMetallicRoughness::Flag::F; }
-			assign(baseColorTexture, BaseColorTexture);
-			assign(aoTexture, AoTexture);
-			assign(metalnessTexture, MetalnessTexture);
-			assign(roughnessTexture, RoughnessTexture);
-			assign(emissionTexture, EmissiveTexture);
-			assign(normalTexture, NormalTexture);
-#undef assign
-
-			shaders.emplace_back(
-				PbrMetallicRoughness::Configuration{}.setLightCount(4).setFlags(
-					flags));
-
-			shaders.back().setLightPositions({
-				Vector3(-10.0f, 10.0f, 10.0f),
-				Vector3(10.0f, 10.0f, 10.0f),
-				Vector3(-10.0f, -10.0f, 10.0f),
-				Vector3(10.0f, -10.0f, 10.0f),
-			});
-			shaders.back().setLightColors({
-				// Vector3(1, 0, 0) * 300,
-				// Vector3(0, 1, 0) * 300,
-				// Vector3(0, 0, 1) * 300,
-				Vector3(1, 1, 1) * 300,
-				Vector3(1, 1, 1) * 300,
-				Vector3(1, 1, 1) * 300,
-				Vector3(1, 1, 1) * 300,
-			});
-		}
+	auto createShader(int matId) {
+		if (shaders.contains(matId)) { return false; }
+		auto& mat = drawInfo.materials[matId];
+		PbrGL::Configuration conf;
+		auto flags = mat.flags;
+		flags |= PbrGL::Flag::ImageBasedLighting;
+		if (lights.size() > 0) { flags |= PbrGL::Flag::PunctualLights; }
+		conf.setView(view).setLightCount(lights.size()).setFlags(flags);
+		shaders.emplace(matId, conf);
+		return true;
 	}
+
+	void updateShaders() { shaders.clear(); }
 
 	void load() {
 		auto path = openFile();
@@ -87,6 +99,7 @@ struct Main {
 
 	void drawImgui() {
 		using namespace ImGui;
+		bool changeShader = false;
 		if (Begin("Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 			Text(
 				"Average %.3f ms/frame (%.1f FPS)",
@@ -103,56 +116,160 @@ struct Main {
 				}
 				if (changed) { updateModel(); }
 			}
-			if (Button("Change Background")) {
-				auto path = openFile();
-				if (path) { environment = EnvMap(*path); }
+
+			if (Combo("View", &view, VIEW_OPTIONS)) { changeShader = true; }
+
+			{
+				if (Button("Change Background")) {
+					auto path = openFile();
+					if (path) {
+						changeShader = true;
+						environment.update(*path);
+					}
+				}
+			}
+
+			{
+				bool useLights = lights.size() > 0;
+				if (Checkbox("Use Lights", &useLights)) {
+					if (!useLights) {
+						changeShader = true;
+						lights.clear();
+					}
+				}
+				for (auto& l : lights) {
+					PushID(&l);
+					Separator();
+					PushItemWidth(80);
+					Combo("T", &l.type, LIGHT_TYPES);
+					SameLine();
+					ColorEdit3(
+						"C", l.color.data(), ImGuiColorEditFlags_NoInputs);
+					SameLine();
+					DragFloat3("P", l.position.data());
+					SameLine();
+					InputFloat("I", &l.intensity);
+					PopItemWidth();
+					PopID();
+				}
+				if (Button("Add Light")) {
+					lights.emplace_back();
+					changeShader = true;
+				}
 			}
 		}
 
 		End();
+		if (changeShader) { updateShaders(); }
+	}
+
+	void draw(
+		Magnum::ArcBall& camera, bool drawOpaqueOnly, int meshId, int matId,
+		Matrix4& transform) {
+		auto& mesh = drawInfo.meshs[meshId];
+		auto& mat = drawInfo.materials[matId];
+
+		if (!mat.opaque && drawOpaqueOnly) { return; }
+
+		auto created = createShader(matId);
+		auto& shader = shaders[matId];
+
+		if (mat.doubleSided) {
+			GL::Renderer::disable(GL::Renderer::Feature::FaceCulling);
+		} else {
+			GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
+		}
+		int textureId = 0;
+
+		auto& env = environment;
+		shader.setTexture("u_LambertianEnvSampler", env.diffuse(), textureId++);
+		shader.setTexture("u_GGXEnvSampler", env.specular(), textureId++);
+		shader.setTexture("u_GGXLUT", env.lut(), textureId++);
+
+		if (mat.flags >= PbrGL::Flag::MaterialSheen) {
+			shader.setTexture("u_CharlieEnvSampler", env.sheen(), textureId++);
+			shader.setTexture("u_CharlieLUT", env.sheenLUT(), textureId++);
+			shader.setTexture("u_SheenELUT", env.sheenELUT(), textureId++);
+		}
+		shader.setUniformT("u_MipCount", 5);
+		shader.setUniformT("u_EnvIntensity", 1.0f);
+		shader.setUniformT("u_EnvRotation", Matrix3(Math::IdentityInit));
+
+		shader.setLights(lights);
+
+		// Set camera Stuff
+		shader.setUniformT("u_Exposure", 1.0f);
+		shader.setUniformT("u_Camera", camera.position());
+		shader.setUniformT(
+			"u_ViewProjectionMatrix",
+			camera.projectionMatrix() * camera.viewMatrix());
+
+		for (auto& [u, v] : mat.colors) {
+			shader.setUniformT(std::string(u), v);
+		}
+		for (auto& [u, v] : mat.floats) {
+			shader.setUniformT(std::string(u), v);
+		}
+		for (auto& [u, v] : mat.transforms) {
+			shader.setUniformT(std::string(u), v);
+		}
+		shader.setUniformT(
+			std::string(mat.baseColor.uniform), mat.baseColor.value);
+		shader.setUniformT(
+			std::string(mat.metallic.uniform), mat.metallic.value);
+		shader.setUniformT(
+			std::string(mat.roughness.uniform), mat.roughness.value);
+
+		for (auto& [u, v] : mat.textures) {
+			shader.setTexture(
+				std::string(u), drawInfo.textures[v], textureId++);
+		}
+
+		auto mod = model * transform;
+
+		shader.setUniformT("u_ModelMatrix", mod)
+			.setUniformT("u_NormalMatrix", Matrix4(mod.normalMatrix()));
+
+		if (!mat.opaque) {
+			shader.setUniformT("u_ViewMatrix", camera.viewMatrix());
+			shader.setUniformT("u_ProjectionMatrix", camera.projectionMatrix());
+			shader.setTexture(
+				"u_TransmissionFramebufferSampler", opaque, textureId++);
+			shader.setUniformT("u_TransmissionFramebufferSize", FB_SIZE);
+		}
+
+		if (created) {
+			auto [ok, msg] = shader.validate();
+			ASSERT_MESG(ok, msg);
+		}
+
+		shader.draw(mesh);
 	}
 
 	void draw(Magnum::ArcBall& camera) {
-		for (auto& [meshId, matId] : drawInfo.meshMatPairs) {
-			auto& shader = shaders[matId];
+		auto allOpaque = std::ranges::all_of(drawInfo.nodes, [&](auto& e) {
+			return drawInfo.materials[std::get<1>(e)].opaque;
+		});
 
-			auto& mesh = drawInfo.meshs[meshId];
-			auto& mat = drawInfo.materials[matId];
+		auto drawScene = [&](bool drawOpaqueOnly) {
+			for (auto& [meshId, matId, transform] : drawInfo.nodes) {
+				draw(camera, drawOpaqueOnly, meshId, matId, transform);
+			}
+			environment.draw(camera);
+		};
 
-			// Set camera Stuff
-			shader.setUniformT("u_Camera", camera.position());
-			shader.setUniformT("u_projection", camera.projectionMatrix());
-			shader.setUniformT("u_view", camera.viewMatrix());
+		if (!allOpaque) {
+			opaqueFramebuffer.bind();
+			opaqueFramebuffer.clear(
+				GL::FramebufferClear::Color | GL::FramebufferClear::Depth);
 
-			// Set colors
-			shader.setUniformT("u_baseColor", mat.baseColor);
-			shader.setUniformT("u_metalness", mat.metalness);
-			shader.setUniformT("u_roughness", mat.roughness);
-			shader.setUniformT("u_ao", mat.ao);
-			shader.setUniformT("u_emissive", mat.emission);
+			drawScene(true);
+			GL::defaultFramebuffer.bind();
 
-#define ASSIGN_TEXTURES(U, T, I) \
-	if (mat.T != -1) { shader.setTexture(U, drawInfo.textures[mat.T], I); }
-
-			ASSIGN_TEXTURES("u_baseColorTexture", baseColorTexture, 0);
-			ASSIGN_TEXTURES("u_metalnessTexture", metalnessTexture, 1);
-			ASSIGN_TEXTURES("u_roughnessTexture", roughnessTexture, 2);
-			ASSIGN_TEXTURES("u_aoTexture", aoTexture, 3);
-			ASSIGN_TEXTURES("u_normalTexture", normalTexture, 4);
-			ASSIGN_TEXTURES("u_emissiveTexture", emissionTexture, 5);
-#undef ASSIGN_TEXTURES
-
-			shader.setTexture("u_irradianceMap", environment.irradiance(), 6);
-			shader.setTexture("u_prefilterMap", environment.prefilter(), 7);
-			shader.setTexture("u_brdfLUT", environment.brdfLUT(), 8);
-
-			shader.setUniformT("u_model", model)
-				.setUniformT("u_normal", model.normalMatrix());
-
-			shader.draw(mesh);
+			opaque.texture.generateMipmap();
 		}
 
-		environment.draw(camera);
+		drawScene(false);
 	}
 
 	void reset() {}

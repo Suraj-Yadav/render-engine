@@ -5,6 +5,7 @@
 #include <Magnum/Platform/GlfwApplication.h>
 
 #include <Magnum/ImGuiIntegration/Context.hpp>
+#include <filesystem>
 
 #include "camera.hpp"
 
@@ -89,12 +90,14 @@ namespace Magnum {
 		}
 
 		bool isCameraMove(auto& event, const auto& pointers) const {
-			return event.isPrimary() && (pointers & Pointer::MouseMiddle) &&
+			return isCameraRotate(event, pointers) &&
 				   (event.modifiers() & Modifier::Shift);
 		}
 
 		bool isCameraRotate(auto& event, const auto& pointers) const {
-			return event.isPrimary() && (pointers & Pointer::MouseMiddle);
+			return (event.isPrimary() && (pointers & Pointer::MouseMiddle)) ||
+				   (event.isPrimary() && (pointers & Pointer::MouseLeft) &&
+					(event.modifiers() & Modifier::Alt));
 		}
 
 		bool isClick(auto& event, const auto& pointers) const {
@@ -118,8 +121,8 @@ namespace Magnum {
 
 		void pointerReleaseEvent(PointerEvent& event) override {
 			if (_imgui.handlePointerReleaseEvent(event)) { return; }
-			if (isCameraRotate(event, event.pointer()) ||
-				isCameraMove(event, event.pointer())) {
+			if (isCameraMove(event, event.pointer()) ||
+				isCameraRotate(event, event.pointer())) {
 			} else if (isClick(event, event.pointer())) {
 				main->pointerPressEvent(event, _camera);
 			}
@@ -127,10 +130,10 @@ namespace Magnum {
 
 		void pointerMoveEvent(PointerMoveEvent& event) override {
 			if (_imgui.handlePointerMoveEvent(event)) { return; }
-			if (isCameraRotate(event, event.pointers())) {
-				_camera.rotate(event.position());
-			} else if (isCameraMove(event, event.pointers())) {
+			if (isCameraMove(event, event.pointers())) {
 				_camera.translate(event.position());
+			} else if (isCameraRotate(event, event.pointers())) {
+				_camera.rotate(event.position());
 			} else if (isClick(event, event.pointers())) {
 				main->pointerMoveEvent(event, _camera);
 			}
@@ -187,12 +190,15 @@ namespace Magnum {
 			ImGui::CreateContext();
 			ImGuiIO& io = ImGui::GetIO();
 			io.IniFilename = nullptr;
-			io.Fonts->Clear();
-			io.FontDefault = io.Fonts->AddFontFromFileTTF(
-				"/usr/share/fonts/abattis-cantarell-fonts/"
-				"Cantarell-Regular.otf",
-				20 * framebufferSize().x() / size.x());
-			io.Fonts->Build();
+			if (constexpr auto font =
+					"/usr/share/fonts/abattis-cantarell-fonts/"
+					"Cantarell-Regular.otf";
+				std::filesystem::exists(font)) {
+				io.Fonts->Clear();
+				io.FontDefault = io.Fonts->AddFontFromFileTTF(
+					font, 20 * framebufferSize().x() / size.x());
+				io.Fonts->Build();
+			}
 
 			_imgui = ImGuiIntegration::Context(
 				*ImGui::GetCurrentContext(), size, windowSize(),

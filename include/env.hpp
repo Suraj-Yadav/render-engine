@@ -3,23 +3,26 @@
 #include <Magnum/GL/Mesh.h>
 
 #include "camera.hpp"
-#include "loader.hpp"
+#include "image.hpp"
 #include "shader.hpp"
 
 class EnvMap {
 	CustomShader _shader;
 
 	Magnum::GL::Mesh _mesh;
-	ImgCubeMap _texture, _irradiance, _prefilter;
-	Img2D _brdfLUT;
+	ImgCubeMap cubemapTexture, lambertianTexture, ggxTexture, sheenTexture;
+	Img2D ggxLutTexture, charlieLutTexture, sheenELut;
 
    public:
-	EnvMap(const std::filesystem::path& path);
+	EnvMap();
+	void update(std::filesystem::path path);
 
 	void draw(Magnum::ArcBall& camera);
 
-	auto& background() { return _texture; }
-	auto& irradiance() { return _irradiance; }
-	auto& prefilter() { return _prefilter; }
-	auto& brdfLUT() { return _brdfLUT; }
+	auto& diffuse() { return lambertianTexture; }
+	auto& specular() { return ggxTexture; }
+	auto& sheen() { return sheenTexture; }
+	auto& lut() { return ggxLutTexture; }
+	auto& sheenLUT() { return charlieLutTexture; }
+	auto& sheenELUT() { return sheenELut; }
 };

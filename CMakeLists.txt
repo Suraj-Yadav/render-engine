@@ -12,7 +12,7 @@ find_package(Stb REQUIRED)
 
 add_library(
   engine STATIC ./src/shader.cpp ./src/camera.cpp ./src/loader.cpp
-                ./src/env.cpp
+                ./src/env.cpp ./src/image.cpp
 )
 target_include_directories(engine PUBLIC include ${Stb_INCLUDE_DIR})
 target_link_libraries(engine PUBLIC magnum spdlog::spdlog cpptrace::cpptrace)
@@ -21,3 +21,6 @@ target_link_options(engine PUBLIC -fsanitize=address,undefined -static-libasan)
 
 add_executable(viewer ./src/viewer.cpp)
 target_link_libraries(viewer PRIVATE engine tinyfiledialogs::tinyfiledialogs)
+
+add_executable(main ./src/main.cpp)
+target_link_libraries(main PRIVATE engine)

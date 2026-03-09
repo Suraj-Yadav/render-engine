@@ -7,11 +7,8 @@ uniform samplerCube u_envCubeMap;
 out vec4 FragColor;
 
 void main() {
-	vec3 color = texture(u_envCubeMap, v_position * vec3(1, -1, 1)).rgb;
+	vec3 color = texture(u_envCubeMap, v_position).rgb;
 
 	// HDR tonemap and gamma correct
-	color = toneMap_KhronosPbrNeutral(color);
-	color = linearTosRGB(color);
-
-	FragColor = vec4(color, 1.0);
+	FragColor = vec4(toneMap(color), 1.0);
 }

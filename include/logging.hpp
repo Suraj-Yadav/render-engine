@@ -1,18 +1,13 @@
 #pragma once
-
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
+
 #include <Corrade/Containers/String.h>
 #include <Corrade/Containers/StringStl.h>
 #include <Corrade/Containers/StringStlView.h>
-
-#include <iostream>
-
-inline std::ostream& operator<<(
-	std::ostream& os, const Corrade::Containers::String& c) {
-	return os << std::string_view(c);
-}
-
+#include <Magnum/PixelFormat.h>
+#include <Magnum/Trade/MaterialData.h>
 #include <fmt/base.h>
+#include <fmt/format.h>
 #include <fmt/std.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/fmt/ostr.h>
@@ -20,15 +15,35 @@ inline std::ostream& operator<<(
 
 #include <cpptrace/cpptrace.hpp>
 #include <cpptrace/from_current.hpp>
+#include <iostream>
 
-// fmt v10 and above requires `fmt::formatter<T>` extends
-// `fmt::ostream_formatter`. See: https://github.com/fmtlib/fmt/issues/3318
-template <>
-struct fmt::formatter<Corrade::Containers::String> : fmt::ostream_formatter {};
+template <typename T, typename... AllowedTypes>
+concept IsOneOf = (std::same_as<T, AllowedTypes> || ...);
 
-inline auto concat(const Corrade::Containers::StringIterable& f) {
-	return Corrade::Containers::String("").join(f);
-}
+template <typename T>
+concept LoggingTypes = IsOneOf<
+	T, Corrade::Containers::String, Corrade::Containers::StringView,
+	Magnum::PixelFormat, Magnum::Trade::MaterialTypes,
+	Magnum::Trade::MaterialAttributeType, Magnum::Trade::MaterialLayer,
+	Magnum::Color3, Magnum::Trade::MaterialAttribute, Magnum::Matrix3,
+	Magnum::Vector2i>;
+
+template <LoggingTypes T>
+struct fmt::formatter<T> : formatter<std::string_view> {
+	auto format(const T& c, format_context& ctx) const
+		-> format_context::iterator {
+		static std::ostringstream os;
+		os.str("");
+		os.clear();
+		Corrade::Utility::Debug{&os} << c;
+
+		auto sv = os.view();
+		while (!sv.empty() && std::isspace(sv.front())) { sv.remove_prefix(1); }
+		while (!sv.empty() && std::isspace(sv.back())) { sv.remove_suffix(1); }
+
+		return formatter<std::string_view>::format(sv, ctx);
+	}
+};
 
 #define DBG(X) SPDLOG_DEBUG(#X " = {}", (X))
 
