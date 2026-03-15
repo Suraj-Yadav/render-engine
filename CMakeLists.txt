@@ -3,24 +3,51 @@ project(main)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_subdirectory(third_party)
-
 find_package(spdlog CONFIG REQUIRED)
 find_package(cpptrace CONFIG REQUIRED)
 find_package(tinyfiledialogs CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 
-add_library(
-  engine STATIC ./src/shader.cpp ./src/camera.cpp ./src/loader.cpp
-                ./src/env.cpp ./src/image.cpp
+list(APPEND MAGNUM_FEATURES Magnum::AnyImageConverter
+  Magnum::AnyImageImporter
+  Magnum::AnySceneImporter
+  Magnum::GlfwApplication
+  Magnum::MeshTools
+  Magnum::Primitives
+  Magnum::Trade
+  MagnumIntegration::ImGui
+  MagnumPlugins::AssimpImporter
+  MagnumPlugins::GltfImporter
+  MagnumPlugins::StbImageConverter
+  MagnumPlugins::StbImageImporter
+  MagnumPlugins::WebPImporter
 )
-target_include_directories(engine PUBLIC include ${Stb_INCLUDE_DIR})
-target_link_libraries(engine PUBLIC magnum spdlog::spdlog cpptrace::cpptrace)
+
+include(Magnum.cmake)
+
+add_library(
+  engine STATIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/camera.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/env.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/image.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/loader.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/shader.cpp
+)
+
+target_include_directories(engine PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR}
+)
+
+target_link_libraries(engine PUBLIC
+  magnum
+  spdlog::spdlog
+  cpptrace::cpptrace
+  tinyfiledialogs::tinyfiledialogs
+)
 target_compile_options(engine PUBLIC -fsanitize=address,undefined)
 target_link_options(engine PUBLIC -fsanitize=address,undefined -static-libasan)
 
-add_executable(viewer ./src/viewer.cpp)
-target_link_libraries(viewer PRIVATE engine tinyfiledialogs::tinyfiledialogs)
-
-add_executable(main ./src/main.cpp)
-target_link_libraries(main PRIVATE engine)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  add_executable(viewer ./src/viewer.cpp)
+  target_link_libraries(viewer PRIVATE engine)
+endif()

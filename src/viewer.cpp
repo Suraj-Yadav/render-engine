@@ -2,12 +2,9 @@
 #include <Magnum/GL/Framebuffer.h>
 #include <Magnum/GL/Renderbuffer.h>
 #include <Magnum/GL/RenderbufferFormat.h>
-#include <Magnum/MeshTools/Compile.h>
-#include <Magnum/Primitives/UVSphere.h>
-#include <Magnum/Shaders/PhongGL.h>
-#include <Magnum/Trade/MeshData.h>
-#include <imgui.h>
 #include <tinyfiledialogs.h>
+
+#include <utility>
 
 #include "env.hpp"
 #include "loader.hpp"
@@ -25,7 +22,7 @@ using namespace Magnum;
 
 constexpr auto FB_SIZE = Vector2i(1024);
 
-struct Main {
+struct Main : MainBase {
 	EnvMap environment;
 	DrawInfo drawInfo;
 
@@ -41,7 +38,9 @@ struct Main {
 
 	std::map<int, PbrGL> shaders;
 
-	Main() : opaque(FB_SIZE, Magnum::PixelFormat::RGBA8Unorm, 5) {
+	Main(AppOptions opts)
+		: MainBase(std::move(opts)),
+		  opaque(FB_SIZE, Magnum::PixelFormat::RGBA8Unorm, 5) {
 		opaque.setStorage()
 			.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
 			.setMinificationFilter(
@@ -97,14 +96,11 @@ struct Main {
 		updateModel();
 	}
 
-	void drawImgui() {
+	void drawImgui() override {
 		using namespace ImGui;
 		bool changeShader = false;
 		if (Begin("Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-			Text(
-				"Average %.3f ms/frame (%.1f FPS)",
-				1000.0 / Double(GetIO().Framerate), Double(GetIO().Framerate));
-
+			drawFPS();
 			{
 				bool changed = DragFloat3("Rotation", input.data(), 15, 0, 360);
 				changed |= SliderFloat(
@@ -158,7 +154,6 @@ struct Main {
 				}
 			}
 		}
-
 		End();
 		if (changeShader) { updateShaders(); }
 	}
@@ -246,7 +241,7 @@ struct Main {
 		shader.draw(mesh);
 	}
 
-	void draw(Magnum::ArcBall& camera) {
+	void draw(Magnum::ArcBall& camera) override {
 		auto allOpaque = std::ranges::all_of(drawInfo.nodes, [&](auto& e) {
 			return drawInfo.materials[std::get<1>(e)].opaque;
 		});
@@ -272,37 +267,22 @@ struct Main {
 		drawScene(false);
 	}
 
-	void reset() {}
+	void reset() override {}
 
-	bool keyPressEvent(KeyEvent& event) {
-		using Key = Magnum::Platform::Application::Key;
-		using Modifier = Magnum::Platform::Application::Modifier;
-
+	bool keyPressEvent(KeyEvent& event) override {
 		if (event.key() == Key::O && (event.modifiers() & Modifier::Ctrl)) {
 			load();
 			return true;
 		}
-		if (event.key() == Key::Space) {}
 		return false;
 	}
-	void pointerPressEvent(PointerEvent& event, Magnum::ArcBall& _camera) {}
-
-	void pointerReleaseEvent(PointerEvent& event, Magnum::ArcBall& _camera) {
-		// _camera.screenCoordToWorld(event.position());
-		using Modifier = Magnum::Platform::Application::Modifier;
-
-		if (event.modifiers() & Modifier::Alt) {}
-	}
-
-	void pointerMoveEvent(PointerMoveEvent& event, Magnum::ArcBall& _camera) {}
 };
 
 int main(int argc, char** argv) {
 	spdlog::cfg::load_env_levels();
 
 	CPPTRACE_TRY {
-		// test();
-		Magnum::App<Main> app({argc, argv}, "GLTF/GLB Viewer");
+		App<Main> app({argc, argv}, {.title = "GLTF/GLB Viewer"});
 		return app.exec();
 	}
 	CPPTRACE_CATCH(const std::exception& e) {

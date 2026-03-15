@@ -15,6 +15,7 @@
 
 #include <cpptrace/cpptrace.hpp>
 #include <cpptrace/from_current.hpp>
+#include <filesystem>
 #include <iostream>
 
 template <typename T, typename... AllowedTypes>
@@ -61,3 +62,5 @@ struct fmt::formatter<T> : formatter<std::string_view> {
 		cpptrace::generate_trace().print();          \
 		std::exit(1);                                \
 	}
+
+#define PARENT std::filesystem::path(__FILE__).parent_path()

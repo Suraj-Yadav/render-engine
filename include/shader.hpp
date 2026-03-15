@@ -4,7 +4,6 @@
 #include <Magnum/GL/AbstractShaderProgram.h>
 #include <Magnum/Math/Vector3.h>
 
-#include <filesystem>
 #include <map>
 
 #include "logging.hpp"

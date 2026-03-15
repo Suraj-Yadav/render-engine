@@ -11,6 +11,7 @@
 #include <filesystem>
 
 #include "image.hpp"
+#include "logging.hpp"
 
 static constexpr auto COORDS = std::to_array({
 	Magnum::Vector3{-1.0f, 3.0f, 0.9999f},
@@ -19,7 +20,9 @@ static constexpr auto COORDS = std::to_array({
 });
 
 EnvMap::EnvMap()
-	: _shader("./shaders/background.vert", "./shaders/background.frag") {
+	: _shader(
+		  PARENT / "../shaders/background.vert",
+		  PARENT / "../shaders/background.frag") {
 	_mesh.setCount(COORDS.size())
 		.addVertexBuffer(
 			Magnum::GL::Buffer{COORDS}, 0,
@@ -35,7 +38,7 @@ EnvMap::EnvMap()
 			ggxLutTexture = {LUT_RESOLUTION, FMT};
 			ggxLutTexture.setStorage();
 			generateImg2D(
-				ggxLutTexture, 1, "./shaders/ibl_filtering.frag",
+				ggxLutTexture, 1, PARENT / "../shaders/ibl_filtering.frag",
 				[&](CustomShader& shader, int) {
 					shader.setUniformT("u_roughness", 0.0f);
 					shader.setUniformT("u_sampleCount", SAMPLE_COUNT);
@@ -57,7 +60,7 @@ EnvMap::EnvMap()
 			charlieLutTexture = {LUT_RESOLUTION, FMT};
 			charlieLutTexture.setStorage();
 			generateImg2D(
-				charlieLutTexture, 1, "./shaders/ibl_filtering.frag",
+				charlieLutTexture, 1, PARENT / "../shaders/ibl_filtering.frag",
 				[&](CustomShader& shader, int) {
 					shader.setUniformT("u_roughness", 0.0f);
 					shader.setUniformT("u_sampleCount", SAMPLE_COUNT);
@@ -73,7 +76,7 @@ EnvMap::EnvMap()
 		.setMinificationFilter(Magnum::SamplerFilter::Linear)
 		.setMagnificationFilter(Magnum::SamplerFilter::Linear);
 
-	sheenELut = loadImage("./images/lut_sheen_E.png");
+	sheenELut = loadImage(PARENT / "../images/lut_sheen_E.png");
 }
 
 void EnvMap::update(std::filesystem::path path) {
@@ -95,7 +98,8 @@ void EnvMap::update(std::filesystem::path path) {
 		cubemapTexture.setStorage();
 
 		generateCubeMap(
-			cubemapTexture, 1, "./shaders/equirectangular_to_cubemap_copy.frag",
+			cubemapTexture, 1,
+			PARENT / "../shaders/equirectangular_to_cubemap_copy.frag",
 			[&](CustomShader& shader, int) {
 				shader.setTexture("u_textureData", input, 0);
 			});
@@ -113,7 +117,7 @@ void EnvMap::update(std::filesystem::path path) {
 		lambertianTexture.setStorage();
 
 		generateCubeMap(
-			lambertianTexture, 1, "./shaders/ibl_filtering.frag",
+			lambertianTexture, 1, PARENT / "../shaders/ibl_filtering.frag",
 			[&](CustomShader& shader, int) {
 				shader.setTexture("u_cubemapTexture", cubemapTexture, 0);
 				shader.setUniformT("u_roughness", 0.0f);
@@ -139,7 +143,8 @@ void EnvMap::update(std::filesystem::path path) {
 
 		constexpr auto GGX_SAMPLE_COUNT = 2048;
 		generateCubeMap(
-			ggxTexture, MAX_MIP_LEVELS + 1, "./shaders/ibl_filtering.frag",
+			ggxTexture, MAX_MIP_LEVELS + 1,
+			PARENT / "../shaders/ibl_filtering.frag",
 			[&](CustomShader& shader, int mip) {
 				auto roughness = (float)mip / (MAX_MIP_LEVELS - 1);
 				shader.setUniformT("u_distribution", 1);
@@ -165,7 +170,8 @@ void EnvMap::update(std::filesystem::path path) {
 
 		constexpr auto SHEEN_SAMPLE_COUNT = 64;
 		generateCubeMap(
-			sheenTexture, MAX_MIP_LEVELS + 1, "./shaders/ibl_filtering.frag",
+			sheenTexture, MAX_MIP_LEVELS + 1,
+			PARENT / "../shaders/ibl_filtering.frag",
 			[&](CustomShader& shader, int mip) {
 				auto roughness = (float)mip / (MAX_MIP_LEVELS - 1);
 				shader.setUniformT("u_distribution", 2);

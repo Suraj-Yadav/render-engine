@@ -46,8 +46,9 @@ struct ShaderCode {
 		constexpr auto LEN = 256;
 		std::string errMsg(LEN, '\0');
 
-		auto* data =
-			stb_include_file(pth.data(), " ", dir.data(), errMsg.data());
+		static std::string inject = " ";
+		auto* data = stb_include_file(
+			pth.data(), inject.data(), dir.data(), errMsg.data());
 		ASSERT_MESG(data != nullptr, "Unable to load shader: {}", errMsg);
 		content += data;
 		free(data);
@@ -211,7 +212,7 @@ void PbrGL::compile() {
 		if (_conf.flags() >= flag) { code.addDef(define); }
 	}
 
-	code.addFile("./shaders/pbr.vert").compile(vert, "VERT");
+	code.addFile(PARENT / "../shaders/pbr.vert").compile(vert, "VERT");
 
 	code.addDef("LIGHT_COUNT", _conf.lightCount())
 		.addDef("ALPHAMODE_OPAQUE", 0)
@@ -257,7 +258,7 @@ void PbrGL::compile() {
 		if (_conf.flags() >= flag) { code.addDef(define); }
 	}
 
-	code.addFile("./shaders/pbr.frag").compile(frag, "FRAG");
+	code.addFile(PARENT / "../shaders/pbr.frag").compile(frag, "FRAG");
 
 	attachShaders({vert, frag});
 

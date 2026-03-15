@@ -19,6 +19,8 @@
 #include <filesystem>
 #include <ranges>
 
+#include "logging.hpp"
+
 using namespace Magnum;
 using namespace Magnum::Math::Literals;
 
@@ -171,14 +173,16 @@ void generateImg2D(
 	Img2D& output, int maxMipLevels, const std::filesystem::path& fragPath,
 	const std::function<void(CustomShader&, int)>& setup) {
 	generate<Img2D, 1>(
-		output, maxMipLevels, "./shaders/image.vert", fragPath, setup);
+		output, maxMipLevels, PARENT / "../shaders/image.vert", fragPath,
+		setup);
 }
 
 void generateCubeMap(
 	ImgCubeMap& output, int maxMipLevels, const std::filesystem::path& fragPath,
 	const std::function<void(CustomShader&, int)>& setup) {
 	generate<ImgCubeMap, CUBE_TRANSFORMS.size()>(
-		output, maxMipLevels, "./shaders/cubemap.vert", fragPath, setup);
+		output, maxMipLevels, PARENT / "../shaders/cubemap.vert", fragPath,
+		setup);
 }
 
 auto save(const Image2D& imageData, const std::filesystem::path& path) {
