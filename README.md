@@ -1,0 +1,10 @@
+# render-engine
+
+A basic render engine with PBR support.
+
+This uses [Magnum](https://doc.magnum.graphics/magnum/) as the graphics middleware. PBR shaders are from [glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer). 
+
+## Sample Usage: GLTF/GLB Viewer
+[viewer.cpp](./src/viewer.cpp)
+
+![Image](https://github.com/user-attachments/assets/88cbd661-a86e-4209-954b-c62e99ffebde)
