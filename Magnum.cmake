@@ -19,12 +19,12 @@ function(_compute_parts OUT1 OUT2 INPUT)
 
   # Write them back to the caller’s variables
   set(${OUT1}
-    "${val1}"
-    PARENT_SCOPE
+      "${val1}"
+      PARENT_SCOPE
   )
   set(${OUT2}
-    "${val2}"
-    PARENT_SCOPE
+      "${val2}"
+      PARENT_SCOPE
   )
 endfunction()
 

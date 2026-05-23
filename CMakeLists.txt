@@ -8,7 +8,10 @@ find_package(cpptrace CONFIG REQUIRED)
 find_package(tinyfiledialogs CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 
-list(APPEND MAGNUM_FEATURES Magnum::AnyImageConverter
+list(
+  APPEND
+  MAGNUM_FEATURES
+  Magnum::AnyImageConverter
   Magnum::AnyImageImporter
   Magnum::AnySceneImporter
   Magnum::GlfwApplication
@@ -34,18 +37,18 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/shader.cpp
 )
 
-target_include_directories(engine PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR}
+target_include_directories(
+  engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR}
 )
 
-target_link_libraries(engine PUBLIC
-  magnum
-  spdlog::spdlog
-  cpptrace::cpptrace
-  tinyfiledialogs::tinyfiledialogs
+target_link_libraries(
+  engine PUBLIC magnum spdlog::spdlog cpptrace::cpptrace
+                tinyfiledialogs::tinyfiledialogs
 )
 target_compile_options(engine PUBLIC -fsanitize=address,undefined)
-target_link_options(engine PUBLIC -fsanitize=address,undefined -static-libasan)
+target_link_options(
+  engine PUBLIC -fsanitize=address,undefined -static-libasan -static-libubsan
+)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_executable(viewer ./src/viewer.cpp)
