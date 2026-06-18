@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 23)
 find_package(spdlog CONFIG REQUIRED)
 find_package(cpptrace CONFIG REQUIRED)
 find_package(tinyfiledialogs CONFIG REQUIRED)
-find_package(Stb REQUIRED)
 
 list(
   APPEND
@@ -37,9 +36,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/shader.cpp
 )
 
-target_include_directories(
-  engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR}
-)
+target_include_directories(engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(
   engine PUBLIC magnum spdlog::spdlog cpptrace::cpptrace

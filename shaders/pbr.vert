@@ -1,4 +1,4 @@
-#include "animation.glsl"
+#include <animation.glsl>
 
 uniform mat4 u_ViewProjectionMatrix;
 uniform mat4 u_ModelMatrix;

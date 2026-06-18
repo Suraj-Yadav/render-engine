@@ -19,11 +19,44 @@
 
 #include <filesystem>
 #include <ranges>
+#include <regex>
 
 #include "logging.hpp"
 
+void resolveInclude(
+	std::ostringstream& out, const std::filesystem::path& path,
+	const std::filesystem::path& dir, std::map<int, std::string>& mapping) {
+	ASSERT_MESG(std::filesystem::is_regular_file(path), "path = {}", path);
+	int lineNum = 1, fileNum = mapping.size();
+	mapping[fileNum] = path.string();
+	out << "#line " << lineNum << " " << fileNum << "\n";
+
+	static const std::regex include(R"(#include\s*(<|")([^>"]+)(>|"))");
+
+	std::ifstream file(path);
+	std::string line;
+	while (std::getline(file, line)) {
+		if (std::smatch match; std::regex_search(line, match, include)) {
+			resolveInclude(out, dir / match[2].str(), dir, mapping);
+			out << "#line " << lineNum + 1 << " " << fileNum << "\n";
+		} else {
+			out << line << "\n";
+		}
+		lineNum++;
+	}
+}
+
+std::string resolveIncludes(
+	const std::filesystem::path& path, std::map<int, std::string>& mapping) {
+	auto dir = path.parent_path();
+	std::ostringstream out;
+	resolveInclude(out, path, dir, mapping);
+	return out.str();
+}
+
 struct ShaderCode {
 	std::string content;
+	std::map<int, std::string> mapping;
 
 	ShaderCode& addDef(std::string_view name) {
 		content += fmt::format("#define {} 1\n", name);
@@ -36,22 +69,7 @@ struct ShaderCode {
 	}
 
 	ShaderCode& addFile(const std::filesystem::path& path) {
-		content += "// ";
-		content += path.string();
-		content += "\n";
-		ASSERT_MESG(std::filesystem::is_regular_file(path), "path = {}", path);
-		auto pth = path.string();
-		auto dir = path.parent_path().string();
-
-		constexpr auto LEN = 256;
-		std::string errMsg(LEN, '\0');
-
-		static std::string inject = " ";
-		auto* data = stb_include_file(
-			pth.data(), inject.data(), dir.data(), errMsg.data());
-		ASSERT_MESG(data != nullptr, "Unable to load shader: {}", errMsg);
-		content += data;
-		free(data);
+		content += resolveIncludes(std::filesystem::canonical(path), mapping);
 		return *this;
 	}
 	void compile(
@@ -62,17 +80,20 @@ struct ShaderCode {
 		if (!shader.compile()) {
 			const auto path =
 				std::filesystem::temp_directory_path() / "temp.glsl";
-			std::ofstream out(path);
-			out << content;
+			{
+				std::ofstream out(path);
+				out << content;
+			}
 
 			(spdlog ::default_logger_raw())
 				->log(
 					spdlog::source_loc{
 						location.file_name(), static_cast<int>(location.line()),
 						location.function_name()},
-					spdlog ::level ::critical, "Failed to compile shader: {}",
-					type);
-			SPDLOG_CRITICAL("Look at the file at {}", path);
+					spdlog::level::critical,
+					"Failed to compile shader: ", type);
+			for (auto& [k, v] : mapping) { SPDLOG_CRITICAL("\t{}: {}", k, v); }
+			SPDLOG_CRITICAL("Look at the complete file content at {}", path);
 			ASSERT(false);
 		}
 		content.clear();
