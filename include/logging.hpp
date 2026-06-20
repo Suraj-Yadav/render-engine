@@ -4,6 +4,7 @@
 #include <Corrade/Containers/String.h>
 #include <Corrade/Containers/StringStl.h>
 #include <Corrade/Containers/StringStlView.h>
+#include <Magnum/GL/Shader.h>
 #include <Magnum/PixelFormat.h>
 #include <Magnum/Trade/MaterialData.h>
 #include <fmt/base.h>
@@ -27,7 +28,7 @@ concept LoggingTypes = IsOneOf<
 	Magnum::PixelFormat, Magnum::Trade::MaterialTypes,
 	Magnum::Trade::MaterialAttributeType, Magnum::Trade::MaterialLayer,
 	Magnum::Color3, Magnum::Trade::MaterialAttribute, Magnum::Matrix3,
-	Magnum::Vector2i>;
+	Magnum::Vector2i, Magnum::GL::Shader::Type>;
 
 template <LoggingTypes T>
 struct fmt::formatter<T> : formatter<std::string_view> {

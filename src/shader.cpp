@@ -15,6 +15,7 @@
 #include <Magnum/Math/Vector3.h>
 #include <Magnum/Shaders/GenericGL.h>
 #include <Magnum/Types.h>
+#include <shader_path.h>
 #include <stb_include.h>
 
 #include <filesystem>
@@ -22,6 +23,12 @@
 #include <regex>
 
 #include "logging.hpp"
+
+std::filesystem::path findInclude(
+	const std::filesystem::path& dir, const std::string& name) {
+	if (std::filesystem::is_regular_file(dir / name)) { return dir / name; }
+	return GLTF_SHADER_DIR / name;
+}
 
 void resolveInclude(
 	std::ostringstream& out, const std::filesystem::path& path,
@@ -37,7 +44,7 @@ void resolveInclude(
 	std::string line;
 	while (std::getline(file, line)) {
 		if (std::smatch match; std::regex_search(line, match, include)) {
-			resolveInclude(out, dir / match[2].str(), dir, mapping);
+			resolveInclude(out, findInclude(dir, match[2].str()), dir, mapping);
 			out << "#line " << lineNum + 1 << " " << fileNum << "\n";
 		} else {
 			out << line << "\n";
@@ -73,7 +80,7 @@ struct ShaderCode {
 		return *this;
 	}
 	void compile(
-		Magnum::GL::Shader& shader, const std::string_view type,
+		Magnum::GL::Shader& shader, const Magnum::GL::Shader::Type type,
 		std::source_location location = std::source_location::current()) {
 		shader.addSource(content);
 
@@ -131,10 +138,10 @@ CustomShader::CustomShader(
 
 	for (const auto& [loc, name] : Locations) { code.addDef(name, loc); }
 
-	code.addFile(vertPath).compile(vert, "VERT");
+	code.addFile(vertPath).compile(vert, Magnum::GL::Shader::Type::Vertex);
 
 	code.addDef("TONEMAP_KHR_PBR_NEUTRAL").addFile(fragPath);
-	code.compile(frag, "FRAG");
+	code.compile(frag, Magnum::GL::Shader::Type::Fragment);
 
 	attachShaders({vert, frag});
 
@@ -233,7 +240,10 @@ void PbrGL::compile() {
 		if (_conf.flags() >= flag) { code.addDef(define); }
 	}
 
-	code.addFile(PARENT / "../shaders/pbr.vert").compile(vert, "VERT");
+	code.addDef("DEBUG_VERT", 0)
+		.addDef("DEBUG_VERT_TANGENT_W", 1)
+		.addFile(GLTF_SHADER_DIR / "primitive.vert")
+		.compile(vert, Magnum::GL::Shader::Type::Vertex);
 
 	code.addDef("LIGHT_COUNT", _conf.lightCount())
 		.addDef("ALPHAMODE_OPAQUE", 0)
@@ -273,15 +283,27 @@ void PbrGL::compile() {
 		.addDef("DEBUG_IRIDESCENCE_THICKNESS", 26)
 		.addDef("DEBUG_ANISOTROPIC_STRENGTH", 27)
 		.addDef("DEBUG_ANISOTROPIC_DIRECTION", 28)
+		.addDef("DEBUG_VOLUME_SCATTER_MULTI_SCATTER_COLOR", 29)
+		.addDef("DEBUG_VOLUME_SCATTER_SINGLE_SCATTER_COLOR", 30)
+		.addDef("DEBUG_TANGENT_W", 31)
 		.addDef("MATERIAL_METALLICROUGHNESS");
 
 	for (const auto& [flag, define] : FragDefines) {
 		if (_conf.flags() >= flag) { code.addDef(define); }
 	}
 
-	code.addFile(PARENT / "../shaders/pbr.frag").compile(frag, "FRAG");
+	code.addFile(GLTF_SHADER_DIR / "pbr.frag")
+		.compile(frag, Magnum::GL::Shader::Type::Fragment);
 
 	attachShaders({vert, frag});
+
+	bindAttributeLocation(GenericGL3D::Position::Location, "a_position");
+	bindAttributeLocation(GenericGL3D::Normal::Location, "a_normal");
+	bindAttributeLocation(
+		GenericGL3D::TextureCoordinates::Location, "a_texcoord_0");
+	bindAttributeLocation(GenericGL3D::Color3::Location, "a_color_0");
+	bindAttributeLocation(
+		GenericGL3D::TransformationMatrix::Location, "a_instance_model_matrix");
 
 	ASSERT_MESG(
 		link(), "vert:\n{}\nfrag\n:{}", concat(vert.sources()),

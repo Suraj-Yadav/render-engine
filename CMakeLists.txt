@@ -25,7 +25,8 @@ list(
   MagnumPlugins::WebPImporter
 )
 
-include(Magnum.cmake)
+include(cmake/Shaders.cmake)
+include(cmake/Magnum.cmake)
 
 add_library(
   engine STATIC
@@ -40,7 +41,7 @@ target_include_directories(engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(
   engine PUBLIC magnum spdlog::spdlog cpptrace::cpptrace
-                tinyfiledialogs::tinyfiledialogs
+                tinyfiledialogs::tinyfiledialogs gltf-shader
 )
 target_compile_options(engine PUBLIC -fsanitize=address,undefined)
 target_link_options(

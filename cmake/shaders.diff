@@ -1,0 +1,12 @@
+diff --git a/source/Renderer/shaders/material_info.glsl b/source/Renderer/shaders/material_info.glsl
+index 4c601593..e00b64a9 100644
+--- a/source/Renderer/shaders/material_info.glsl
++++ b/source/Renderer/shaders/material_info.glsl
+@@ -276,6 +276,7 @@ MaterialInfo getSpecularInfo(MaterialInfo info)
+ MaterialInfo getTransmissionInfo(MaterialInfo info)
+ {
+     info.transmissionFactor = u_TransmissionFactor;
++    info.thickness = 0.0;
+ 
+ #ifdef HAS_TRANSMISSION_MAP
+     vec4 transmissionSample = texture(u_TransmissionSampler, getTransmissionUV());

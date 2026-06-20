@@ -89,9 +89,11 @@ struct Main : MainBase {
 	void load() {
 		auto path = openFile();
 		if (!path) { return; }
+		load(*path);
+	}
 
-		drawInfo = loadMesh(*path);
-
+	void load(const std::filesystem::path& path) {
+		drawInfo = loadMesh(path);
 		updateShaders();
 		updateModel();
 	}
