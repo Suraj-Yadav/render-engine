@@ -4,7 +4,8 @@ FetchContent_Declare(
   gltf-sample-renderer
   GIT_REPOSITORY https://github.com/KhronosGroup/glTF-Sample-Renderer
   GIT_TAG bec106e53da4a6a398aa3205f0f96563519a657e
-  PATCH_COMMAND git apply "${CMAKE_CURRENT_LIST_DIR}/shaders.diff"
+  PATCH_COMMAND git reset --hard && git apply
+                "${CMAKE_CURRENT_LIST_DIR}/shaders.diff"
 )
 FetchContent_MakeAvailable(gltf-sample-renderer)
 

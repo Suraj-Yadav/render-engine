@@ -2,6 +2,7 @@
   "dependencies": [
     "assimp",
     "cpptrace",
+    "cxxopts",
     "glfw3",
     "imgui",
     "libjpeg-turbo",

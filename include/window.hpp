@@ -9,7 +9,9 @@
 #include <imgui.h>
 
 #include <Magnum/ImGuiIntegration/Context.hpp>
+#include <cxxopts.hpp>
 #include <filesystem>
+#include <functional>
 
 #include "camera.hpp"
 
@@ -19,6 +21,54 @@ struct AppOptions {
 	std::filesystem::path fontpath =
 		"/usr/share/fonts/abattis-cantarell-fonts/Cantarell-Regular.otf";
 	int fontSize = 20;
+};
+
+class ArgsParser {
+	cxxopts::Options options;
+	std::vector<std::function<void(const cxxopts::ParseResult& result)>>
+		assignments;
+
+   public:
+	ArgsParser(std::string program_name) : options(std::move(program_name)) {
+		options.allow_unrecognised_options().add_options()(
+			"h,help", "Print usage");
+	}
+
+	template <typename T>
+	ArgsParser& addOption(
+		T& dest, const std::string& shortOption, const std::string& longOption,
+		const std::string& desc,
+		const std::optional<std::string>& value = std::nullopt,
+		const std::string& arg_help = "") {
+		if (value.has_value()) {
+			options.add_options()(
+				(shortOption.empty() ? "" : (shortOption + ",")) + longOption,
+				desc, cxxopts::value<T>()->default_value(value.value()),
+				arg_help);
+		} else {
+			options.add_options()(
+				(shortOption.empty() ? "" : (shortOption + ",")) + longOption,
+				desc, cxxopts::value<T>());
+		}
+
+		assignments.push_back(
+			[&dest, longOption](const cxxopts::ParseResult& result) {
+				const auto& opt = result[longOption];
+				if (opt.count() > 0 || opt.has_default()) {
+					dest = result[longOption].as<T>();
+				}
+			});
+		return *this;
+	}
+
+	void parse(int argc, const char* const* argv) {
+		auto res = options.parse(argc, argv);
+		if (res.contains("help")) {
+			std::cout << options.help() << '\n';
+			std::exit(0);
+		}
+		for (auto& assignment : assignments) { assignment(res); }
+	}
 };
 
 using Key = Magnum::Platform::Application::Key;
@@ -67,7 +117,7 @@ class MainBase {
 		PointerMoveEvent& /* event */, Magnum::ArcBall& /* camera */) {}
 };
 
-template <typename T>
+template <typename T, typename U>
 	requires std::derived_from<T, MainBase>
 class App : public Magnum::Platform::Application {
 	Magnum::ImGuiIntegration::Context _imgui{Magnum::NoCreate};
@@ -225,7 +275,10 @@ class App : public Magnum::Platform::Application {
 	}
 
    public:
-	explicit App(const Arguments& arguments, const AppOptions& opts)
+	explicit App(
+		const Arguments& arguments, const AppOptions& opts,
+		const std::function<void(ArgsParser& parser, U& args)>& argParser =
+			nullptr)
 		: Magnum::Platform::Application{arguments, Magnum::NoCreate} {
 		/* Setup window */
 		{
@@ -291,6 +344,14 @@ class App : public Magnum::Platform::Application {
 			_camera = Magnum::ArcBall(eye, viewCenter, up, fov, windowSize());
 			_camera.reshape(windowSize(), framebufferSize());
 		}
-		main.emplace(opts);
+
+		// Parse command line arguments
+		ArgsParser parser(opts.title);
+		U args;
+		if (argParser != nullptr) {
+			argParser(parser, args);
+			parser.parse(arguments.argc, arguments.argv);
+		}
+		main.emplace(opts, args);
 	}
 };

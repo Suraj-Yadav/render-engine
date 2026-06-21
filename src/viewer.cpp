@@ -20,6 +20,12 @@ std::optional<std::filesystem::path> openFile() {
 
 using namespace Magnum;
 
+struct Args {
+	std::filesystem::path env;
+	std::filesystem::path modelPath;
+	Vector4 modelTransformation;
+};
+
 constexpr auto FB_SIZE = Vector2i(1024);
 
 struct Main : MainBase {
@@ -38,8 +44,9 @@ struct Main : MainBase {
 
 	std::map<int, PbrGL> shaders;
 
-	Main(AppOptions opts)
+	Main(AppOptions opts, const Args& args)
 		: MainBase(std::move(opts)),
+		  input(args.modelTransformation),
 		  opaque(FB_SIZE, Magnum::PixelFormat::RGBA8Unorm, 5) {
 		opaque.setStorage()
 			.setWrapping(Magnum::GL::SamplerWrapping::ClampToEdge)
@@ -62,7 +69,9 @@ struct Main : MainBase {
 			"status = {}",
 			int(opaqueFramebuffer.checkStatus(GL::FramebufferTarget::Draw)));
 
-		environment.update("./images/abandoned_garage_4k.hdr");
+		environment.update(args.env);
+
+		if (!args.modelPath.empty()) { load(args.modelPath); }
 	}
 
 	void updateModel() {
@@ -284,7 +293,19 @@ int main(int argc, char** argv) {
 	spdlog::cfg::load_env_levels();
 
 	CPPTRACE_TRY {
-		App<Main> app({argc, argv}, {.title = "GLTF/GLB Viewer"});
+		App<Main, Args> app(
+			{argc, argv}, {.title = "GLTF/GLB Viewer"},
+			[](ArgsParser& parser, Args& args) {
+				parser.addOption(
+					args.modelPath, "m", "model", "Model to load by default");
+				parser.addOption(
+					args.modelTransformation, "t", "modelTransformation",
+					"Default model transformation (euler angles + scale)",
+					"90 0 270 1");
+				parser.addOption(
+					args.env, "e", "envImage", "Image for IBL",
+					"images/abandoned_garage_4k.hdr");
+			});
 		return app.exec();
 	}
 	CPPTRACE_CATCH(const std::exception& e) {
