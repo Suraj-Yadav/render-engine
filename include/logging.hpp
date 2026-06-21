@@ -4,6 +4,8 @@
 #include <Corrade/Containers/String.h>
 #include <Corrade/Containers/StringStl.h>
 #include <Corrade/Containers/StringStlView.h>
+#include <Magnum/GL/Shader.h>
+#include <Magnum/Math/Vector4.h>
 #include <Magnum/PixelFormat.h>
 #include <Magnum/Trade/MaterialData.h>
 #include <fmt/base.h>
@@ -17,6 +19,7 @@
 #include <cpptrace/from_current.hpp>
 #include <filesystem>
 #include <iostream>
+#include <istream>
 
 template <typename T, typename... AllowedTypes>
 concept IsOneOf = (std::same_as<T, AllowedTypes> || ...);
@@ -27,7 +30,7 @@ concept LoggingTypes = IsOneOf<
 	Magnum::PixelFormat, Magnum::Trade::MaterialTypes,
 	Magnum::Trade::MaterialAttributeType, Magnum::Trade::MaterialLayer,
 	Magnum::Color3, Magnum::Trade::MaterialAttribute, Magnum::Matrix3,
-	Magnum::Vector2i>;
+	Magnum::Vector2i, Magnum::GL::Shader::Type>;
 
 template <LoggingTypes T>
 struct fmt::formatter<T> : formatter<std::string_view> {
@@ -45,6 +48,10 @@ struct fmt::formatter<T> : formatter<std::string_view> {
 		return formatter<std::string_view>::format(sv, ctx);
 	}
 };
+
+inline std::istream& operator>>(std::istream& in, Magnum::Vector4& vec) {
+	return in >> vec.x() >> vec.y() >> vec.z() >> vec.w();
+}
 
 #define DBG(X) SPDLOG_DEBUG(#X " = {}", (X))
 

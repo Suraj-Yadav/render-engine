@@ -1,0 +1,4 @@
+#pragma once
+#include <filesystem>
+
+inline const std::filesystem::path GLTF_SHADER_DIR = "@GLTF_SHADER_DIR@";
